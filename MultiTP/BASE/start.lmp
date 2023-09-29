@@ -1,0 +1,56 @@
+units           real
+atom_style      full
+boundary        p p p
+
+variable	temperature equal TEMPERATURE # K
+variable	tempDamp equal 100 # fs
+variable        pressure equal PRESSURE # atm
+variable        pressureDamp equal 1000 # This is 1 ps
+variable        seed equal 745823
+
+# OPLS potential
+bond_style      harmonic
+angle_style      harmonic
+dihedral_style      opls
+pair_style lj/cut/coul/long 10.0 10.0
+special_bonds lj/coul 0.0 0.0 0.5
+pair_modify shift yes mix geometric
+
+read_data	h2o2.lammps-data
+
+kspace_style    pppm 1e-5
+
+neighbor        1.0 bin
+neigh_modify    delay 0 every 5 check yes
+
+timer           timeout 24:55:00 every 1000
+
+compute 1 all dihedral/local phi
+compute 2 all reduce ave c_1
+
+thermo          100
+thermo_style    custom step c_2 temp press vol ke pe etotal lx ly lz ebond eangle edihed eimp epair evdwl ecoul elong etail
+
+
+timestep	0.5
+
+# Equilibration
+
+fix             1 all nph iso ${pressure} ${pressure} ${pressureDamp}
+fix             2 all temp/csvr ${temperature} ${temperature} ${tempDamp} ${seed}
+fix             3 all momentum 100 linear 1 1 1 rescale angular
+
+velocity        all create ${temperature} ${seed} dist gaussian
+
+run             2000000 upto # 1 ns
+
+# Production
+
+reset_timestep	0
+dump            myDump all custom 100 h2o2.lammps-dump-text id type xs ys zs
+fix		4 all print 100 "$(step) $(vol) $(pe) $(c_2)" file thermo.txt screen no title "# step vol pe c_2" 
+run             20000000 upto # 10 ns
+
+write_data      final.lammps-data
+
+
